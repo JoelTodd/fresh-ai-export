@@ -66,6 +66,15 @@ Read or modify those only when the task is specifically about their output.
 - Keep backend/frontend changes together when a filter shape, warning, export
   result, or connection behavior crosses the API boundary.
 
+## Git Workflow
+
+- Before starting feature work, create a focused branch from the current main
+  branch instead of editing directly on `main`.
+- Keep commits scoped to the approved change and do not include unrelated local
+  work.
+- Commit, merge to `main`, and push only when the user says the change is ready
+  for mainline publication.
+
 ## Verification
 
 Use the smallest relevant check first, then broaden checks when the change spans
