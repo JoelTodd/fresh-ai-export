@@ -56,6 +56,20 @@ The simple build path lives beside the test path:
 The build creates `frontend/release/Freshdesk Local Exporter-0.1.0-portable.exe`.
 From File Explorer, right-click `scripts\build.ps1` and choose **Run with PowerShell**.
 
+For binaries you plan to publish, build from a clean checkout on Windows and
+keep the build inputs reviewable:
+
+- Portable Python is pinned to `3.12.10` in `scripts/build.ps1`, and its bundled
+  Python packages are pinned in `backend/windows-build-requirements.txt`.
+- The WebView2 SDK package used to compile the host is pinned in
+  `scripts/build.ps1`. The produced EXE still uses the Microsoft Edge WebView2
+  Runtime installed on the user's machine instead of bundling a browser runtime.
+- Frontend packages come from `frontend/package-lock.json`; the Windows build
+  uses `npm ci` when it needs to install them.
+- The build machine must provide Windows PowerShell, Node/npm compatible with
+  the frontend lockfile, an installed Python that can run `pip`, and the .NET
+  Framework C# compiler at the Windows framework path checked by the script.
+
 ## Browser Development
 
 Backend:

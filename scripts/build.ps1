@@ -46,6 +46,7 @@ $RuntimePythonDir = Join-Path $Runtime "python"
 $RuntimePython = Join-Path $RuntimePythonDir "python.exe"
 $RuntimeSitePackages = Join-Path $RuntimePythonDir "Lib\site-packages"
 $RuntimeMarker = Join-Path $Runtime ".runtime-spec"
+$RuntimeRequirements = Join-Path $Backend "windows-build-requirements.txt"
 $Release = Join-Path $Frontend "release"
 $Stage = Join-Path $Release "single-exe-stage"
 $AppStage = Join-Path $Stage "app"
@@ -57,6 +58,7 @@ $SevenZip = Join-Path $Frontend "node_modules\7zip-bin\win\x64\7za.exe"
 $WebViewSdk = Join-Path $Stage "webview2-sdk"
 $WebViewNupkg = Join-Path $Stage "Microsoft.Web.WebView2.nupkg"
 $WebViewZip = Join-Path $Stage "Microsoft.Web.WebView2.zip"
+$WebViewSdkVersion = "1.0.3967.48"
 $WebViewCore = Join-Path $WebViewSdk "lib\net462\Microsoft.Web.WebView2.Core.dll"
 $WebViewWinForms = Join-Path $WebViewSdk "lib\net462\Microsoft.Web.WebView2.WinForms.dll"
 $WebViewLoader = Join-Path $WebViewSdk "runtimes\win-x64\native\WebView2Loader.dll"
@@ -101,13 +103,13 @@ Write-Host "Preparing portable Python runtime..."
 Push-Location $Backend
 try {
   $EmbedVersion = "3.12.10"
+  if (!(Test-Path $RuntimeRequirements)) {
+    throw "Windows build requirements were not found at $RuntimeRequirements."
+  }
+  $RuntimeRequirementsHash = (Get-FileHash -Algorithm SHA256 $RuntimeRequirements).Hash
   $RuntimeSpec = @(
     "python=$EmbedVersion"
-    "fastapi"
-    "httpx"
-    "pydantic"
-    "python-dotenv"
-    "uvicorn[standard]"
+    "requirements-sha256=$RuntimeRequirementsHash"
   ) -join "`n"
   $CanReuseRuntime =
     !$CleanRuntime -and
@@ -157,7 +159,7 @@ try {
       --implementation cp `
       --abi cp312 `
       --only-binary=:all: `
-      fastapi httpx pydantic python-dotenv "uvicorn[standard]"
+      --requirement $RuntimeRequirements
     if ($LASTEXITCODE -ne 0) { throw "Python dependency installation failed" }
 
     & $RuntimePython -c "import encodings, uvicorn, fastapi, pydantic; assert hasattr(uvicorn, 'run'); print('embedded python ok')"
@@ -191,8 +193,8 @@ else {
         ((Test-Path $PackageLock) -and ((Get-Item $PackageLock).LastWriteTimeUtc -gt (Get-Item $NodeModulesLock).LastWriteTimeUtc)))
 
     if ($ShouldInstall) {
-      npm install
-      if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+      npm ci
+      if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
     }
     else {
       Write-Host "Reusing existing node_modules."
@@ -215,7 +217,7 @@ if (!(Test-Path $LauncherSource)) {
 }
 
 Write-Host "Preparing WebView2 host SDK..."
-Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2" -OutFile $WebViewNupkg
+Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$WebViewSdkVersion" -OutFile $WebViewNupkg
 Copy-Item -LiteralPath $WebViewNupkg -Destination $WebViewZip -Force
 Expand-Archive -Path $WebViewZip -DestinationPath $WebViewSdk -Force
 if (!(Test-Path $WebViewCore) -or !(Test-Path $WebViewWinForms) -or !(Test-Path $WebViewLoader)) {
