@@ -56,6 +56,14 @@ The simple build path lives beside the test path:
 The build creates `frontend/release/Freshdesk Local Exporter-0.1.0-portable.exe`.
 From File Explorer, right-click `scripts\build.ps1` and choose **Run with PowerShell**.
 
+The build signs the final EXE when it finds a current-user code-signing
+certificate named `Freshdesk Local Exporter Internal`. To choose a different
+certificate from `Cert:\CurrentUser\My`, pass
+`-SigningCertificateThumbprint <thumbprint>` or set
+`FRESH_EXPORTER_SIGNING_THUMBPRINT` before running the build. If no matching
+certificate is available, the build publishes an unsigned EXE and prints a
+warning.
+
 For binaries you plan to publish, build from a clean checkout on Windows and
 keep the build inputs reviewable:
 
@@ -69,6 +77,9 @@ keep the build inputs reviewable:
 - The build machine must provide Windows PowerShell, Node/npm compatible with
   the frontend lockfile, an installed Python that can run `pip`, and the .NET
   Framework C# compiler at the Windows framework path checked by the script.
+- Use an organization-trusted or publicly trusted code-signing certificate for
+  binaries shared with colleagues. The local internal certificate path is for
+  development and controlled internal trust only.
 
 ## Browser Development
 

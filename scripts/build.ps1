@@ -2,6 +2,7 @@ param(
   [switch] $CleanRuntime,
   [switch] $SkipFrontendBuild,
   [switch] $SkipNpmInstall,
+  [string] $SigningCertificateThumbprint = $env:FRESH_EXPORTER_SIGNING_THUMBPRINT,
   [ValidateSet("Fast", "Small")]
   [string] $Compression = "Fast"
 )
@@ -54,6 +55,7 @@ $PayloadZip = Join-Path $Stage "app.zip"
 $PythonPayloadZip = Join-Path $Stage "python-runtime.zip"
 $LauncherSource = Join-Path $PSScriptRoot "WebViewPortableLauncher.cs"
 $PortableExe = Join-Path $Release "Freshdesk Local Exporter-0.1.0-portable.exe"
+$UnsignedPortableExe = Join-Path $Stage "Freshdesk Local Exporter-0.1.0-portable.exe.unsigned"
 $SevenZip = Join-Path $Frontend "node_modules\7zip-bin\win\x64\7za.exe"
 $WebViewSdk = Join-Path $Stage "webview2-sdk"
 $WebViewNupkg = Join-Path $Stage "Microsoft.Web.WebView2.nupkg"
@@ -84,6 +86,30 @@ function Clear-ReleaseGeneratedContent {
   Get-ChildItem -LiteralPath $resolvedRelease -Force |
     Where-Object { $_.Name -ne "exports" } |
     ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+}
+
+function Find-CodeSigningCertificate {
+  if ($SigningCertificateThumbprint) {
+    $configured = Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert |
+      Where-Object { $_.Thumbprint -eq $SigningCertificateThumbprint } |
+      Select-Object -First 1
+    if (!$configured) {
+      throw "The configured code-signing certificate was not found in Cert:\CurrentUser\My."
+    }
+    if (!$configured.HasPrivateKey) {
+      throw "The configured code-signing certificate does not have a private key."
+    }
+    return $configured
+  }
+
+  return Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert |
+    Where-Object {
+      $_.Subject -eq "CN=Freshdesk Local Exporter Internal" -and
+      $_.HasPrivateKey -and
+      $_.NotAfter -gt (Get-Date)
+    } |
+    Sort-Object NotAfter -Descending |
+    Select-Object -First 1
 }
 
 $TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -275,7 +301,7 @@ $CompressionFsRef = Join-Path $FrameworkDir "System.IO.Compression.FileSystem.dl
   /nologo `
   /target:winexe `
   /optimize+ `
-  "/out:$PortableExe" `
+  "/out:$UnsignedPortableExe" `
   "/resource:$PayloadZip,FreshdeskLocalExporter.Payload.app.zip" `
   "/resource:$PythonPayloadZip,FreshdeskLocalExporter.Payload.python-runtime.zip" `
   "/resource:$WebViewCore,FreshdeskLocalExporter.WebView2.Core.dll" `
@@ -289,6 +315,29 @@ $CompressionFsRef = Join-Path $FrameworkDir "System.IO.Compression.FileSystem.dl
   "/reference:$WebViewWinForms" `
   $LauncherSource
 if ($LASTEXITCODE -ne 0) { throw "WebView launcher compilation failed" }
+
+$SigningCertificate = Find-CodeSigningCertificate
+if ($SigningCertificate) {
+  Write-Host "Signing Windows executable..."
+  $Signature = Set-AuthenticodeSignature `
+    -LiteralPath $UnsignedPortableExe `
+    -Certificate $SigningCertificate
+  if ($Signature.Status -ne "Valid") {
+    throw "Windows executable signing failed: $($Signature.StatusMessage)"
+  }
+}
+else {
+  Write-Warning "No local code-signing certificate was found. Publishing an unsigned executable."
+}
+
+Move-Item -LiteralPath $UnsignedPortableExe -Destination $PortableExe -Force
+
+if ($SigningCertificate) {
+  $FinalSignature = Get-AuthenticodeSignature -LiteralPath $PortableExe
+  if ($FinalSignature.Status -ne "Valid") {
+    throw "Published Windows executable signature verification failed: $($FinalSignature.StatusMessage)"
+  }
+}
 
 Write-Host ""
 Write-Host "Done. WebView2 Windows executable:"
