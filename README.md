@@ -47,7 +47,8 @@ From File Explorer, right-click `scripts\devtest.ps1` and choose **Run with Powe
 
 ## Build Windows EXE
 
-The simple build path lives beside the test path:
+Public GitHub distribution is source-only. After cloning the repository or
+downloading the source archive, build the Windows app locally:
 
 ```powershell
 .\scripts\build.ps1
@@ -56,8 +57,8 @@ The simple build path lives beside the test path:
 The build creates `frontend/release/Freshdesk Local Exporter-0.1.0-portable.exe`.
 From File Explorer, right-click `scripts\build.ps1` and choose **Run with PowerShell**.
 The output version comes from `frontend/package.json` by default; pass
-`-Version <version>` when building a release from a matching Git tag. Pass
-`-SkipSigning` when deliberately producing an unsigned build.
+`-Version <version>` when building a tagged source checkout. Pass
+`-SkipSigning` when deliberately producing an unsigned local build.
 
 The build signs the final EXE when it finds a current-user code-signing
 certificate named `Freshdesk Local Exporter Internal`. To choose a different
@@ -67,8 +68,7 @@ certificate from `Cert:\CurrentUser\My`, pass
 certificate is available, the build publishes an unsigned EXE and prints a
 warning.
 
-For binaries you plan to publish, build from a clean checkout on Windows and
-keep the build inputs reviewable:
+The build inputs stay reviewable:
 
 - Portable Python is pinned to `3.12.10` in `scripts/build.ps1`, and its bundled
   Python packages are pinned in `backend/windows-build-requirements.txt`.
@@ -80,11 +80,11 @@ keep the build inputs reviewable:
 - The build machine must provide Windows PowerShell, Node/npm compatible with
   the frontend lockfile, an installed Python that can run `pip`, and the .NET
   Framework C# compiler at the Windows framework path checked by the script.
-- Public GitHub Release EXEs are unsigned and can trigger Windows SmartScreen
-  or managed endpoint warnings. The local internal certificate path is for
-  development and controlled internal trust only.
-- Public Windows release automation is documented in
-  [docs/releasing.md](docs/releasing.md).
+- Built EXEs, frontend release folders, portable Python runtimes, exports, and
+  other local outputs are ignored and should not be committed.
+- The local internal certificate path is for development and controlled
+  internal trust only.
+- Source-only release guidance is documented in [docs/releasing.md](docs/releasing.md).
 
 ## Browser Development
 
