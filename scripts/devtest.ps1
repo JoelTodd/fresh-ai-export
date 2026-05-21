@@ -1,6 +1,7 @@
 param(
   [switch] $SkipBuild,
-  [switch] $SmokeTest
+  [switch] $SmokeTest,
+  [string] $Version
 )
 
 Set-StrictMode -Version Latest
@@ -34,14 +35,18 @@ trap {
 }
 
 $Root = Split-Path -Parent $PSScriptRoot
-$ExePath = Join-Path $Root "frontend\release\Freshdesk Local Exporter-0.1.0-portable.exe"
+$FrontendPackage = Join-Path $Root "frontend\package.json"
+if (!$Version) {
+  $Version = (Get-Content -Path $FrontendPackage -Raw | ConvertFrom-Json).version
+}
+$ExePath = Join-Path $Root "frontend\release\Freshdesk Local Exporter-$Version-portable.exe"
 
 function Stop-FreshdeskExporter {
   Get-CimInstance Win32_Process |
     Where-Object {
       $_.Name -like "*Freshdesk Local Exporter*" -or
       ($_.CommandLine -and (
-        $_.CommandLine -like "*Freshdesk Local Exporter-0.1.0-portable.exe*" -or
+        $_.CommandLine -like "*Freshdesk Local Exporter-$Version-portable.exe*" -or
         $_.CommandLine -like "*FreshdeskLocalExporter*" -or
         $_.CommandLine -like "*backend_launcher.py*"
       ))
@@ -50,7 +55,7 @@ function Stop-FreshdeskExporter {
 }
 
 if (!$SkipBuild) {
-  & (Join-Path $PSScriptRoot "build.ps1")
+  & (Join-Path $PSScriptRoot "build.ps1") -Version $Version
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

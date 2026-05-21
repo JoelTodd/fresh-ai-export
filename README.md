@@ -55,6 +55,9 @@ The simple build path lives beside the test path:
 
 The build creates `frontend/release/Freshdesk Local Exporter-0.1.0-portable.exe`.
 From File Explorer, right-click `scripts\build.ps1` and choose **Run with PowerShell**.
+The output version comes from `frontend/package.json` by default; pass
+`-Version <version>` when building a release from a matching Git tag. Pass
+`-SkipSigning` when deliberately producing an unsigned build.
 
 The build signs the final EXE when it finds a current-user code-signing
 certificate named `Freshdesk Local Exporter Internal`. To choose a different
@@ -77,9 +80,11 @@ keep the build inputs reviewable:
 - The build machine must provide Windows PowerShell, Node/npm compatible with
   the frontend lockfile, an installed Python that can run `pip`, and the .NET
   Framework C# compiler at the Windows framework path checked by the script.
-- Use an organization-trusted or publicly trusted code-signing certificate for
-  binaries shared with colleagues. The local internal certificate path is for
+- Public GitHub Release EXEs are unsigned and can trigger Windows SmartScreen
+  or managed endpoint warnings. The local internal certificate path is for
   development and controlled internal trust only.
+- Public Windows release automation is documented in
+  [docs/releasing.md](docs/releasing.md).
 
 ## Browser Development
 

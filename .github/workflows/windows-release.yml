@@ -1,0 +1,92 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  portable-exe:
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set release version
+        id: version
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content -Path frontend/package.json -Raw | ConvertFrom-Json).version
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $tagVersion = $env:GITHUB_REF_NAME.TrimStart("v")
+            if ($tagVersion -ne $packageVersion) {
+              throw "Tag version $tagVersion does not match frontend package version $packageVersion."
+            }
+            $tagVersion
+          }
+          else {
+            $packageVersion
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build portable EXE
+        shell: pwsh
+        run: |
+          .\scripts\build.ps1 -Compression Small -SkipSigning -Version "${{ steps.version.outputs.version }}"
+
+      - name: Prepare EXE and checksum
+        id: assets
+        shell: pwsh
+        run: |
+          $publish = Join-Path $env:GITHUB_WORKSPACE "frontend\release\publish"
+          New-Item -ItemType Directory -Force -Path $publish | Out-Null
+          $builtExe = Get-ChildItem -LiteralPath frontend\release -Filter "*-portable.exe" |
+            Select-Object -First 1
+          if (!$builtExe) {
+            throw "Portable EXE was not found after the build."
+          }
+          $exe = Copy-Item -LiteralPath $builtExe.FullName -Destination $publish -PassThru -Force
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $exe.FullName
+          $checksum = Join-Path $exe.DirectoryName "SHA256SUMS.txt"
+          "$($hash.Hash.ToLowerInvariant())  $($exe.Name)" |
+            Set-Content -LiteralPath $checksum -Encoding ASCII
+          "exe=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable-unsigned-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.assets.outputs.exe }}
+            ${{ steps.assets.outputs.checksum }}
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            --verify-tag `
+            --generate-notes `
+            --notes "Windows portable EXE assets in this release are unsigned. Windows SmartScreen or managed endpoint policy may warn or block the download. Verify SHA256SUMS.txt before running it, or inspect the source and build locally with scripts\build.ps1." `
+            "${{ steps.assets.outputs.exe }}" `
+            "${{ steps.assets.outputs.checksum }}"

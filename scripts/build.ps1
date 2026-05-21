@@ -2,6 +2,8 @@ param(
   [switch] $CleanRuntime,
   [switch] $SkipFrontendBuild,
   [switch] $SkipNpmInstall,
+  [switch] $SkipSigning,
+  [string] $Version,
   [string] $SigningCertificateThumbprint = $env:FRESH_EXPORTER_SIGNING_THUMBPRINT,
   [ValidateSet("Fast", "Small")]
   [string] $Compression = "Fast"
@@ -42,6 +44,7 @@ trap {
 $Root = Split-Path -Parent $PSScriptRoot
 $Backend = Join-Path $Root "backend"
 $Frontend = Join-Path $Root "frontend"
+$FrontendPackage = Join-Path $Frontend "package.json"
 $Runtime = Join-Path $Backend "runtime-fast"
 $RuntimePythonDir = Join-Path $Runtime "python"
 $RuntimePython = Join-Path $RuntimePythonDir "python.exe"
@@ -54,8 +57,6 @@ $AppStage = Join-Path $Stage "app"
 $PayloadZip = Join-Path $Stage "app.zip"
 $PythonPayloadZip = Join-Path $Stage "python-runtime.zip"
 $LauncherSource = Join-Path $PSScriptRoot "WebViewPortableLauncher.cs"
-$PortableExe = Join-Path $Release "Freshdesk Local Exporter-0.1.0-portable.exe"
-$UnsignedPortableExe = Join-Path $Stage "Freshdesk Local Exporter-0.1.0-portable.exe.unsigned"
 $SevenZip = Join-Path $Frontend "node_modules\7zip-bin\win\x64\7za.exe"
 $WebViewSdk = Join-Path $Stage "webview2-sdk"
 $WebViewNupkg = Join-Path $Stage "Microsoft.Web.WebView2.nupkg"
@@ -64,6 +65,19 @@ $WebViewSdkVersion = "1.0.3967.48"
 $WebViewCore = Join-Path $WebViewSdk "lib\net462\Microsoft.Web.WebView2.Core.dll"
 $WebViewWinForms = Join-Path $WebViewSdk "lib\net462\Microsoft.Web.WebView2.WinForms.dll"
 $WebViewLoader = Join-Path $WebViewSdk "runtimes\win-x64\native\WebView2Loader.dll"
+
+if (!$Version) {
+  if (!(Test-Path $FrontendPackage)) {
+    throw "Frontend package metadata was not found at $FrontendPackage."
+  }
+  $Version = (Get-Content -Path $FrontendPackage -Raw | ConvertFrom-Json).version
+}
+if ($Version -notmatch "^[0-9A-Za-z][0-9A-Za-z.+-]*$") {
+  throw "Release version contains unsupported filename characters: $Version"
+}
+
+$PortableExe = Join-Path $Release "Freshdesk Local Exporter-$Version-portable.exe"
+$UnsignedPortableExe = Join-Path $Stage "Freshdesk Local Exporter-$Version-portable.exe.unsigned"
 
 function Remove-GeneratedDirectory($Path) {
   $resolvedRoot = [System.IO.Path]::GetFullPath($Root)
@@ -316,7 +330,7 @@ $CompressionFsRef = Join-Path $FrameworkDir "System.IO.Compression.FileSystem.dl
   $LauncherSource
 if ($LASTEXITCODE -ne 0) { throw "WebView launcher compilation failed" }
 
-$SigningCertificate = Find-CodeSigningCertificate
+$SigningCertificate = if ($SkipSigning) { $null } else { Find-CodeSigningCertificate }
 if ($SigningCertificate) {
   Write-Host "Signing Windows executable..."
   $Signature = Set-AuthenticodeSignature `
@@ -325,6 +339,9 @@ if ($SigningCertificate) {
   if ($Signature.Status -ne "Valid") {
     throw "Windows executable signing failed: $($Signature.StatusMessage)"
   }
+}
+elseif ($SkipSigning) {
+  Write-Host "Skipping Windows executable signing."
 }
 else {
   Write-Warning "No local code-signing certificate was found. Publishing an unsigned executable."
